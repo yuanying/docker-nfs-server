@@ -13,15 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM debian:12
+FROM debian:11
 
 ADD index.html /tmp/index.html
 RUN chmod 644 /tmp/index.html
 
+ENV NFS_VERSION 1:1.3.4-6
+
 ENV C2D_RELEASE 1.3.4
 
 RUN set -x && \
-    apt-get update && apt-get install -qq -y openssl nfs-kernel-server && \
+    apt-get update && apt-get install -qq -y openssl nfs-kernel-server=${NFS_VERSION}* && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir /exports
 
