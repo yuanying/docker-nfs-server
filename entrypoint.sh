@@ -32,6 +32,8 @@ function start()
         if [ -v gid ] ; then
             chmod 070 $i
             chgrp $gid $i
+            /bin/cp /tmp/index.html $i/
+            chmod 644 $i/index.html
         fi
         echo "Serving $i"
     done
@@ -46,11 +48,11 @@ function start()
     mount -t nfsd nfds /proc/fs/nfsd
 
     # -V 3: enable NFSv3
-    /usr/sbin/rpc.mountd -N 3 -V 3
+    /usr/sbin/rpc.mountd -N 2 -V 3
 
     /usr/sbin/exportfs -r
     # -G 10 to reduce grace time to 10 seconds (the lowest allowed)
-    /usr/sbin/rpc.nfsd -G 10 -N 3 -V 3
+    /usr/sbin/rpc.nfsd -G 10 -N 2 -V 3
     /sbin/rpc.statd --no-notify
     echo "NFS started"
 }

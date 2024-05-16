@@ -15,6 +15,9 @@
 
 FROM debian:12
 
+ADD index.html /tmp/index.html
+RUN chmod 644 /tmp/index.html
+
 ENV C2D_RELEASE 1.3.4
 
 RUN set -x && \
