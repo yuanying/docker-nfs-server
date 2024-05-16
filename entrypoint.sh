@@ -46,7 +46,7 @@ function start()
     mount -t nfsd nfds /proc/fs/nfsd
 
     # -V 3: enable NFSv3
-    /usr/sbin/rpc.mountd -N 2 -V 3
+    /usr/sbin/rpc.mountd -N 3 -V 3
 
     /usr/sbin/exportfs -r
     # -G 10 to reduce grace time to 10 seconds (the lowest allowed)
