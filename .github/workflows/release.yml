@@ -18,6 +18,8 @@ permissions: {}
 
 jobs:
   plan:
+    # Release only what is on main, even when dispatched from another branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
