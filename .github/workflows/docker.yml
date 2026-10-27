@@ -37,6 +37,9 @@ jobs:
     outputs:
       tags: ${{ steps.prep.outputs.tags }}
       push: ${{ steps.prep.outputs.push }}
+      main: ${{ steps.prep.outputs.main }}
+      source: ${{ steps.prep.outputs.source }}
+      revision: ${{ steps.prep.outputs.revision }}
     steps:
       -
         name: Prepare
@@ -50,17 +53,29 @@ jobs:
           SHA=${INPUT_REF:-$GITHUB_SHA}
           SHORTREF=${SHA::8}
           PUSH=false
+          MAIN=false
 
-          # A release (called by release.yml) or a git tag names the docker tag
-          # and is pushed; anything else is only built.
+          # A release (called by release.yml), a git tag or a push to main
+          # names the docker tag and is pushed; anything else is only built.
           if [[ -n "$INPUT_VERSION" ]]; then
             VERSION=$INPUT_VERSION
             PUSH=true
           elif [[ $GITHUB_REF == refs/tags/v* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
             PUSH=true
+          elif [[ $GITHUB_EVENT_NAME == push && $GITHUB_REF == refs/heads/main ]]; then
+            VERSION=main
+            PUSH=true
+            MAIN=true
           fi
-          TAGS="${DOCKER_IMAGE}:${VERSION},${DOCKER_IMAGE}:${SHORTREF}"
+
+          # main moves a single tag, so that the image it displaces is left
+          # untagged for the cleanup job to remove.
+          if [[ $MAIN == true ]]; then
+            TAGS="${DOCKER_IMAGE}:main"
+          else
+            TAGS="${DOCKER_IMAGE}:${VERSION},${DOCKER_IMAGE}:${SHORTREF}"
+          fi
 
           # If the VERSION looks like a version number, assume that
           # this is the most recent version of the image and also
@@ -73,6 +88,9 @@ jobs:
           {
             echo "tags=${TAGS}"
             echo "push=${PUSH}"
+            echo "main=${MAIN}"
+            echo "source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+            echo "revision=${SHA}"
           } >> "${GITHUB_OUTPUT}"
 
   # Pull requests and branch pushes only build, without write access to
@@ -105,12 +123,20 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: false
           tags: ${{ needs.prep.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ needs.prep.outputs.source }}
+            org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
 
-  # v* tags and release.yml push the image.
+  # v* tags, release.yml and pushes to main push the image.
   publish:
     needs: prep
     if: needs.prep.outputs.push == 'true'
     runs-on: ubuntu-latest
+    # Pushes to main are serialized, so that an older commit finishing late
+    # cannot move :main back.
+    concurrency:
+      group: ${{ needs.prep.outputs.main == 'true' && 'publish-main' || format('publish-{0}', github.run_id) }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
@@ -145,3 +171,27 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ needs.prep.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ needs.prep.outputs.source }}
+            org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+
+  # Deletes the images that :main left untagged. Tagged images and the
+  # platform images of a multi-arch index are kept.
+  cleanup:
+    needs: [prep, publish]
+    if: needs.prep.outputs.main == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    concurrency:
+      group: ghcr-cleanup
+      cancel-in-progress: false
+    steps:
+      -
+        # https://github.com/dataaxiom/ghcr-cleanup-action
+        # Pinned by commit, as it is given the right to delete images.
+        name: Delete untagged images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          delete-untagged: true
+          validate: true
