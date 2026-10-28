@@ -4,14 +4,30 @@ name: Weekly release
 # vX.Y.Z tag. The image is pushed first and the tag last, so a failed push
 # leaves no tag behind. The build runs in this run because a tag pushed with
 # GITHUB_TOKEN does not trigger docker.yml.
+#
+# Merging a vuln-responder/ pull request into main cuts the same release at
+# once, but only when every commit since the tag that changed the image is
+# Renovate's or vuln-responder's (next-release.sh --bots-only). Otherwise the
+# run's summary lists the commits that held it back, and the release is left
+# to a dispatch by hand or to the next weekly run.
 on:
   schedule:
     # Monday 09:00 JST
     - cron: '0 0 * * 1'
   workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches: [main]
 
+# Releases are serialized, so that a fix merged during the weekly run is
+# planned from the tag that run pushed. Pull requests that cannot release
+# take a group of their own, so that they never displace a pending release.
 concurrency:
-  group: weekly-release
+  group: >-
+    ${{ (github.event_name != 'pull_request'
+        || (github.event.pull_request.merged
+            && startsWith(github.event.pull_request.head.ref, 'vuln-responder/')))
+      && 'weekly-release' || format('release-skip-{0}', github.run_id) }}
   cancel-in-progress: false
 
 permissions: {}
@@ -19,7 +35,14 @@ permissions: {}
 jobs:
   plan:
     # Release only what is on main, even when dispatched from another branch.
-    if: github.ref == 'refs/heads/main'
+    # A pull request releases only when it is a vuln-responder/ branch of this
+    # repository that was merged.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.merged
+      && startsWith(github.event.pull_request.head.ref, 'vuln-responder/')
+      && github.event.pull_request.head.repo.full_name == github.repository
+      || github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,16 +52,23 @@ jobs:
       tag: ${{ steps.next.outputs.tag }}
       sha: ${{ steps.sha.outputs.sha }}
     steps:
+      # main as it is now, rather than the pull request's merge commit, so
+      # that fixes merged one after another are released together.
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: main
           fetch-depth: 0
       - name: Resolve commit
         id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Decide next version
         id: next
-        run: .github/scripts/next-release.sh HEAD | tee -a "$GITHUB_OUTPUT"
+        env:
+          BOTS_ONLY: ${{ github.event_name == 'pull_request' && '--bots-only' || '' }}
+        run: |
+          # shellcheck disable=SC2086
+          .github/scripts/next-release.sh $BOTS_ONLY HEAD | tee -a "$GITHUB_OUTPUT"
 
   publish:
     needs: plan

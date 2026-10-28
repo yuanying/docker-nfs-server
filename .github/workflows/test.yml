@@ -1,0 +1,28 @@
+name: Test release scripts
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/scripts/**'
+      - '.github/workflows/test.yml'
+  pull_request:
+    paths:
+      - '.github/scripts/**'
+      - '.github/workflows/test.yml'
+
+permissions: {}
+
+jobs:
+  bats:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - name: Run tests
+        run: bats .github/scripts/test
