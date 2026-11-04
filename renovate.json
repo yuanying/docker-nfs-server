@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>yuanying/renovate-config", "github>yuanying/renovate-config:automerge-patch"],
+  "extends": ["github>yuanying/renovate-config", "github>yuanying/renovate-config:platform-automerge"],
   "packageRules": [
     {
       "description": "The base image is pinned by digest, so that a tag such as debian:12 being pushed again with a rebuilt layer arrives as a pull request instead of slipping silently into the next build. Only the Dockerfile is pinned; the actions stay on their version tags",
